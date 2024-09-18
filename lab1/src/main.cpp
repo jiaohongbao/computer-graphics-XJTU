@@ -62,7 +62,8 @@ int main(int argc, char* argv[]){
     hessian(1,0)=0;
     hessian(1,1)=2;
     hessian_invert=hessian.inverse();
-    while(true){
+    
+    for(int i=0;i<50;i++){
         if(flag1==1){
             break;
         }
@@ -73,6 +74,7 @@ int main(int argc, char* argv[]){
             logger.debug("{:.15f}",xk);
             Eigen::Matrix<double,2,1> g=grad(xk);
             xkk=xk-lambda*hessian_invert*g;
+            
             continue;
         }
         else{
