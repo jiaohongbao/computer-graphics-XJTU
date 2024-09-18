@@ -35,7 +35,7 @@ Eigen::Matrix<double,2,1> grad(Eigen::Matrix<double,2,1> x){
 
 int main(int argc, char* argv[]){
     auto console_sink=std::make_shared<spdlog::sinks::stdout_color_sink_st>();
-    auto file_sink=std::make_shared<spdlog::sinks::basic_file_sink_st>("my_program.log",true);
+    auto file_sink=std::make_shared<spdlog::sinks::basic_file_sink_st>("optimizer.log",true);
     spdlog::logger logger("my logger", {console_sink,file_sink});
 
     spdlog::set_level(spdlog::level::debug);
