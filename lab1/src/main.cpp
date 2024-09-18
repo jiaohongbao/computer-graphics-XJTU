@@ -34,11 +34,13 @@ Eigen::Matrix<double,2,1> grad(Eigen::Matrix<double,2,1> x){
 }
 
 int main(int argc, char* argv[]){
+    spdlog::set_level(spdlog::level::debug);
     auto console_sink=std::make_shared<spdlog::sinks::stdout_color_sink_st>();
     auto file_sink=std::make_shared<spdlog::sinks::basic_file_sink_st>("optimizer.log",true);
-    spdlog::logger logger("my logger", {console_sink,file_sink});
+    spdlog::logger logger("optimizer", {console_sink,file_sink});
 
     spdlog::set_level(spdlog::level::debug);
+
     logger.set_level(spdlog::level::debug);
     file_sink->set_level(spdlog::level::debug);
 
@@ -67,7 +69,8 @@ int main(int argc, char* argv[]){
         if(flag2==0){
             flag2=1;
             xk=x0;
-            spdlog::debug("{:>5.10f}",xk);
+            //spdlog::debug("{:.10f}",xk);
+            logger.debug("{:.15f}",xk);
             Eigen::Matrix<double,2,1> g=grad(xk);
             xkk=xk-lambda*hessian_invert*g;
             continue;
@@ -81,13 +84,15 @@ int main(int argc, char* argv[]){
                 xk=xkk;
                 Eigen::Matrix<double,2,1> g=grad(xk);
                 xkk=xk-lambda*hessian_invert*g;
-                spdlog::debug("{:>5.10f}",xk);
+                //spdlog::debug("{:.10f}",xk);
+                logger.debug("{:.15f}",xk);
                 continue;
             }
         }
 
     }
-    spdlog::info("{:>5.10f}",abs(xkk-xk));
+    //spdlog::info("{:.10f}",abs(xkk-xk));
+    logger.info("{:.15f}",abs(xkk-xk));
     
     return 0;
 }
