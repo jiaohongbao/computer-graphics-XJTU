@@ -22,7 +22,8 @@ target_include_directories(${PROJECT_NAME}
 target_compile_definitions(${PROJECT_NAME}
     PRIVATE SPDLOG_FMT_EXTERNAL
     PRIVATE FMT_HEADER_ONLY)
-find_package(fmt REQUIRED)
+#find_package(fmt REQUIRED)
+add_subdirectory(deps/fmt)
 target_link_libraries(${PROJECT_NAME} fmt::fmt)
 
 
