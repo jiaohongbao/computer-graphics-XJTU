@@ -174,7 +174,7 @@ tuple<float,float> f_min_max(float a,float b,float c){
 }
 void Rasterizer::rasterize_triangle(Triangle& t)
 {
-    // these lines below are just for compiling and can be deleted
+   // these lines below are just for compiling and can be deleted
     //(void)t;
     //FragmentShaderPayload payload;
     // these lines above are just for compiling and can be deleted
@@ -186,85 +186,66 @@ void Rasterizer::rasterize_triangle(Triangle& t)
     //
     //
     //
-    FragmentShaderPayload payload;
+    //FragmentShaderPayload payload;
     auto [minx,maxx]=f_min_max(t.viewport_pos[0].x(),t.viewport_pos[1].x(),t.viewport_pos[2].x()); 
     auto [miny,maxy]=f_min_max(t.viewport_pos[0].y(),t.viewport_pos[1].y(),t.viewport_pos[2].y());
-    
+    //printf("t.viewport_pos[0].w() = %f, t.viewport_pos[1].w() = %f, t.viewport_pos[2].w() = %f\n",
+       //t.viewport_pos[0].w(), t.viewport_pos[1].w(), t.viewport_pos[2].w());------这里也有问题，全部都是0；
 
-    for(int i=int(minx);i<=int(maxx);i++){
-      for(int j=int(miny);j<=int(maxy);j++){
-        if(inside_triangle(float(i),float(j),t.world_pos)){
-          auto [alpha, beta, gamma] = Rasterizer::compute_barycentric_2d(float(i),float(j),t.world_pos);
-          
-          
-          Vector4f point[3];
-          /*
-          point[0]<<t.world_pos[0].x(),t.world_pos[0].y(),t.world_pos[0].z(),1;
-          point[1]<<t.world_pos[1].x(),t.world_pos[1].y(),t.world_pos[1].z(),1;
-          point[2]<<t.world_pos[2].x(),t.world_pos[2].y(),t.world_pos[2].z(),1;
-          */
-          point[0]=t.viewport_pos[0];
-          point[1]=t.viewport_pos[1];
-          point[2]=t.viewport_pos[2];
+    // 遍历扫描区域内的每一个像素
+    for (int i = static_cast<int>(std::floor(minx)); i <= static_cast<int>(std::ceil(maxx)); i++) {
+        for (int j = static_cast<int>(std::floor(miny)); j <= static_cast<int>(std::ceil(maxy)); j++) {
+            FragmentShaderPayload payload;
+            // 判断该像素是否在三角形内
+            if (inside_triangle(float(i) , float(j) , t.viewport_pos))
+            {
 
 
+                auto [alpha, beta, gamma] = compute_barycentric_2d(float(i),float(j), t.viewport_pos);
+
+
+                Vector4f point[3];
+                /*
+                point[0]<<t.world_pos[0].x(),t.world_pos[0].y(),t.world_pos[0].z(),1;
+                point[1]<<t.world_pos[1].x(),t.world_pos[1].y(),t.world_pos[1].z(),1;
+                point[2]<<t.world_pos[2].x(),t.world_pos[2].y(),t.world_pos[2].z(),1;
+                */
+                point[0]=t.viewport_pos[0];
+                point[1]=t.viewport_pos[1];
+                point[2]=t.viewport_pos[2];
+
+
           
-          float z_depth_of_point[3];
-          z_depth_of_point[0]=t.viewport_pos[0].w();
-          z_depth_of_point[1]=t.viewport_pos[1].w();
-          z_depth_of_point[2]=t.viewport_pos[2].w();
+                float z_depth_of_point[3];
+                z_depth_of_point[0]=t.viewport_pos[0].w();
+                z_depth_of_point[1]=t.viewport_pos[1].w();
+                z_depth_of_point[2]=t.viewport_pos[2].w();
 
           
           //auto Zt=1/(alpha/z_depth_of_point[0]+beta/z_depth_of_point[1]+gamma/z_depth_of_point[2]);
           //auto It=(alpha*point[0].z()/z_depth_of_point[0]+beta*point[1].z()/z_depth_of_point[1]+gamma*point[2].z()/z_depth_of_point[2])*Zt;
 
 
-          float It = alpha * t.viewport_pos[0].z() + beta  * t.viewport_pos[1].z() + gamma * t.viewport_pos[2].z();
 
-          Eigen::Vector3f wp=interpolate(alpha,beta,gamma,t.world_pos[0].head<3>(),t.world_pos[1].head<3>(),t.world_pos[2].head<3>(),{z_depth_of_point[0],z_depth_of_point[1],z_depth_of_point[2]},It);
+                float It = alpha * t.viewport_pos[0].z() + beta  * t.viewport_pos[1].z() + gamma * t.viewport_pos[2].z();
+                
+                
+               
+                
+                payload.world_pos = interpolate(alpha,beta,gamma,t.world_pos[0].head<3>(),t.world_pos[1].head<3>(),t.world_pos[2].head<3>(),{z_depth_of_point[0], z_depth_of_point[1], z_depth_of_point[2]},It);
+                payload.world_normal=interpolate(alpha,beta,gamma,t.normal[0],t.normal[1],t.normal[2],{z_depth_of_point[0], z_depth_of_point[1], z_depth_of_point[2]},It);
 
-          Eigen::Vector3f wn=interpolate(alpha,beta,gamma,t.normal[0],t.normal[1],t.normal[2],{z_depth_of_point[0],z_depth_of_point[1],z_depth_of_point[2]},It);
-
-
-          
-          //float point[]={t.world_pos[0].z(),t.world_pos[1].z(),t.world_pos[2].z()};
-
-          //auto It=(alpha*i_point[0]/z[0]+beta*i_point[1]/z[1]+gamma*i_point[2]/z[2])*Zt;
-          
-
-
-           
-          payload.depth=It;
-          payload.x=i;
-          payload.y=j;
-          
-
-          payload.world_pos=wp;
-          payload.world_normal=wn;
-          /*
-          Eigen::Matrix<float,3,1> pointx;
-          pointx<<t.viewport_pos[0].x()/z[0],t.viewport_pos[1].x()/z[1],t.viewport_pos[2].x()/z[2];
-          Eigen::Matrix<float,3,1> pointy;
-          pointy<<t.viewport_pos[0].y()/z[0],t.viewport_pos[1].y()/z[1],t.viewport_pos[2].y()/z[2];
-          Eigen::Matrix<float,3,1> pointz;
-          pointz<<t.viewport_pos[0].z()/z[0],t.viewport_pos[1].z()/z[1],t.viewport_pos[2].z()/z[2];
-          Vector3f wp,wn;
-          wp=Zt*alpha*pointx+Zt*beta*pointy+Zt*pointz;
+                
+                payload.x=i;
+                payload.y=j;
+                payload.depth=It;
 
 
-          wn=(alpha*t.normal[0]/z[0]+beta*t.normal[1]/z[1]+gamma*t.normal[2]/z[2]).normalized();
-          */
-          std::unique_lock<std::mutex> lock(Context::rasterizer_queue_mutex);
-          Context::rasterizer_output_queue.push(payload);
 
-
+                std::unique_lock<std::mutex> lock(Context::rasterizer_queue_mutex);
+                Context::rasterizer_output_queue.push(payload);
+            }
+            
         }
-        else{
-          return;
-        }
-      }
     }
-
-    //std::unique_lock<std::mutex> lock(Context::rasterizer_queue_mutex);
-    //Context::rasterizer_output_queue.push(payload);
 }
