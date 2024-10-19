@@ -15,83 +15,100 @@ VertexShaderPayload vertex_shader(const VertexShaderPayload& payload)
 {
     VertexShaderPayload output_payload = payload;
 
-    // 1. 顶点位置变换到裁剪空间
-    Eigen::Vector4f clip_position = Uniforms::MVP * payload.world_position;
+    //Eigen::Matrix4f Uniforms::MVP;
+    //int Uniforms::width;
+    //int Uniforms::height;
+    Vector4f clip = Uniforms::MVP*payload.world_position;
+    /*
+    for(int i=0;i<4;i++){
+      clip(i)=clip(i)/clip(3);
+    }
 
-    // 2. 进行视口变换
-    output_payload.viewport_position.x() = (clip_position.x() / clip_position.w()) * (Uniforms::width / 2.0f) + (Uniforms::width / 2.0f);
-    output_payload.viewport_position.y() = (clip_position.y() / clip_position.w()) * (Uniforms::height / 2.0f) + (Uniforms::height / 2.0f);
-    output_payload.viewport_position.z() = clip_position.z() / clip_position.w(); // 深度值
+    Eigen::Matrix4f a=Eigen::Matrix4f::Identity();
+    a(0,0)=Uniforms::width/2;
+    a(1,1)=Uniforms::height/2;
+    a(0,3)=Uniforms::width/2;
+    a(1,3)=Uniforms::height/2;
 
-    // 3. 法线向量变换到相机坐标系
-    output_payload.normal = (Uniforms::inv_trans_M * payload.normal.homogeneous()).head<3>().normalized(); // 归一化法线
+    output_payload.viewport_position=a*clip;
+
+
+    Vector4f n(payload.normal(0),payload.normal(1),payload.normal(2),1);
+    //Eigen::Matrix4f Uniforms::inv_trans_M;
+    n=Uniforms::inv_trans_M*n;
+    
+
+    for(int i=0;i<3;i++){
+      output_payload.normal(i)=n(i);
+    }
+    */
+    
+    output_payload.viewport_position.x()=(clip.x()/clip.w())*(Uniforms::width/2.0f)+(Uniforms::width/2.0f);
+    output_payload.viewport_position.y()=(clip.y()/clip.w())*(Uniforms::height/2.0f)+(Uniforms::height/2.0f);
+    output_payload.viewport_position.z()=(clip.z()/clip.w());
+
+    output_payload.normal=(Uniforms::inv_trans_M*payload.normal.homogeneous()).head<3>().normalized();
+
+    // Vertex position transformation
+
+    // Viewport transformation
+
+    // Vertex normal transformation
 
     return output_payload;
 }
 
-
 Vector3f phong_fragment_shader(const FragmentShaderPayload& payload, const GL::Material& material,
                                const std::list<Light>& lights, const Camera& camera)
 {
-    Vector3f result = {0, 0, 0};
+    Eigen::Vector3f ka=material.ambient;
+    Eigen::Vector3f kd=material.diffuse;
+    Eigen::Vector3f ks=material.specular;
 
-    // 材质属性
-    Vector3f ka = material.ambient; // 环境光系数
-    Vector3f kd = material.diffuse;  // 漫反射系数
-    Vector3f ks = material.specular; // 镜面反射系数
-    float shininess = material.shininess;
+    Eigen::Vector3f point=payload.world_pos,normal=payload.world_normal,eye_pos=camera.position;
+    Eigen::Vector3f amb_light_intensity={1,1,1};
+    Eigen::Vector3f result_color={0,0,0};
 
-    // 遍历所有光源
-    for (const auto& light : lights)
-    {
-        // 计算光源方向
-        Vector3f light_dir = (light.position - payload.world_pos).normalized();//此时payload.world_po为nan
-        if (light_dir.norm() == 0.0f) continue; // 跳过光源方向为零的情况nan
-        //printf("payload.world_pos = %f, %f, %f\n", payload.world_pos.x(), payload.world_pos.y(), payload.world_pos.z());
-        // 视线方向
-        Vector3f view_dir = (camera.position - payload.world_pos).normalized();
-        if (view_dir.norm() == 0.0f) continue; // 跳过视线方向为零的情况nan
+    Eigen::Vector3f La;
 
-        // 计算半向量nan
-        Vector3f half_vector = (light_dir + view_dir).normalized();
+    for(int i=0;i<3;i++){
+      La(i)=ka(i)*amb_light_intensity(i);
+    }
+    result_color=result_color+La;
 
-        
-        // 计算光照衰减
-        float distance = (light.position - payload.world_pos).squaredNorm();
-        float attenuation = light.intensity/distance;
+    for(auto& light : lights){
+      Eigen::Vector3f lightPos=light.position;
 
-        // 计算环境光分量
-        Vector3f ambient = ka * light.intensity;
+      float r =(lightPos-point).dot(lightPos-point);
 
-        // 计算漫反射分量nan
-        float diff = std::max(light_dir.dot(payload.world_normal.normalized()), 0.0f); // L·N 计算
-        Vector3f diffuse = kd  * diff * attenuation;
+      Eigen::Vector3f n=normal.normalized();
+      Eigen::Vector3f l=(lightPos-point).normalized();
+      Eigen::Vector3f v=(eye_pos-point).normalized();
+      Eigen::Vector3f h=(v+l).normalized();
+      Eigen::Vector3f Ld=kd*(light.intensity/r)*std::max(0.0f,n.dot(l));
+      Eigen::Vector3f Ls=ks*(light.intensity/r)*std::pow(std::max(0.0f,n.dot(h)),material.shininess);
 
-        // 计算镜面反射分量nan
-        float spec = std::max(half_vector.dot(payload.world_normal.normalized()), 0.0f); // H·N 计算
-        Vector3f specular = ks  * std::pow(spec, shininess) * attenuation;
+      result_color=result_color+Ld+Ls;
 
-        // 将所有光照分量累加到结果中
-        result += ambient + diffuse + specular;
-        //printf("light_dir = %f, %f, %f\n", light_dir.x(), light_dir.y(), light_dir.z());
-       //printf("view_dir = %f, %f, %f\n", view_dir.x(), view_dir.y(), view_dir.z());
-        //printf("half_vector = %f, %f, %f\n", half_vector.x(), half_vector.y(), half_vector.z());
-        //printf("ambient = %f, %f, %f\n", ambient.x(), ambient.y(), ambient.z());
-       // printf("diffuse = %f, %f, %f\n", diffuse.x(), diffuse.y(), diffuse.z());
-        //printf("specular = %f, %f, %f\n", specular.x(), specular.y(), specular.z());
+    }
+    for(int i=0;i<3;i++){
+      if(result_color(i)<0){
+        result_color(i)=0;
+      }
+      if(result_color(i)>1){
+        result_color(i)=1;
+      }
     }
 
-    // 确保结果在[0, 1]范围内
-    //result = result.cwiseMax(0.0f).cwiseMin(1.0f);
+    /*
+    // these lines below are just for compiling and can be deleted
+    (void)payload;
+    (void)material;
+    (void)lights;
+    (void)camera;
+    // these lines above are just for compiling and can be deleted
 
-    // 设置渲染结果的最大阈值为255
-    result = result * 255.0f;
-
-    //printf("result = %f,%f,%f\n",result.x(),result.y(),result.z());
-    return result;
-}
-
-
+    Vector3f result = {0, 0, 0};
 
     // ka,kd,ks can be got from material.ambient,material.diffuse,material.specular
 
@@ -112,3 +129,6 @@ Vector3f phong_fragment_shader(const FragmentShaderPayload& payload, const GL::M
     // Specular
 
     // set rendering result max threshold to 255
+    */
+    return result_color * 255.f;
+}
