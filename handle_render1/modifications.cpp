@@ -82,7 +82,7 @@ float minx = std::min({t.viewport_pos[0].x(), t.viewport_pos[1].x(), t.viewport_
         for (int j = static_cast<int>(std::floor(miny)); j <= static_cast<int>(std::ceil(maxy)); j++) {
             FragmentShaderPayload payload;
             
-            if (inside_triangle(float(i) , float(j) , t.viewport_pos))
+            if (inside_triangle(i, j, t.viewport_pos))
             {
 
 
@@ -195,3 +195,85 @@ Vector3f phong_fragment_shader(const FragmentShaderPayload& payload, const GL::M
     return result;
 }
 
+
+void RasterizerRenderer::render(const Scene& scene)
+{
+    Uniforms::width       = static_cast<int>(width);
+    Uniforms::height      = static_cast<int>(height);
+    Context::frame_buffer = FrameBuffer(Uniforms::width, Uniforms::height);
+    // clear Color Buffer & Depth Buffer & rendering_res
+    Context::frame_buffer.clear(BufferType::Color | BufferType::Depth);
+    this->rendering_res.clear();
+    // run time statistics
+    time_point begin_time                  = steady_clock::now();
+    Camera cam                             = scene.camera;
+    vertex_processor.vertex_shader_ptr     = vertex_shader;
+    fragment_processor.fragment_shader_ptr = phong_fragment_shader;
+    for (const auto& group : scene.groups) {
+        for (const auto& object : group->objects) {
+            Context::vertex_finish     = false;
+            Context::rasterizer_finish = false;
+            Context::fragment_finish   = false;
+
+            std::vector<std::thread> workers;
+            for (int i = 0; i < n_vertex_threads; ++i) {
+                workers.emplace_back(&VertexProcessor::worker_thread, &vertex_processor);
+            }
+            for (int i = 0; i < n_rasterizer_threads; ++i) {
+                workers.emplace_back(&Rasterizer::worker_thread, &rasterizer);
+            }
+            for (int i = 0; i < n_fragment_threads; ++i) {
+                workers.emplace_back(&FragmentProcessor::worker_thread, &fragment_processor);
+            }
+
+            // set Uniforms for vertex shader
+            Uniforms::MVP         = cam.projection() * cam.view() * object->model();
+            Uniforms::inv_trans_M = object->model().inverse().transpose();
+            Uniforms::width       = static_cast<int>(this->width);
+            Uniforms::height      = static_cast<int>(this->height);
+            // To do: 同步
+            Uniforms::material = object->mesh.material;
+            Uniforms::lights   = scene.lights;
+            Uniforms::camera   = scene.camera;
+
+            // input object->mesh's vertices & faces & normals data
+            const std::vector<float>& vertices     = object->mesh.vertices.data;
+            const std::vector<unsigned int>& faces = object->mesh.faces.data;
+            const std::vector<float>& normals      = object->mesh.normals.data;
+            size_t num_faces                       = faces.size();
+
+            // process vertices
+            for (size_t i = 0; i < num_faces; i += 3) {
+                for (size_t j = 0; j < 3; j++) {
+                    size_t idx = faces[i + j];
+                    vertex_processor.input_vertices(
+                        Vector4f(vertices[3 * idx], vertices[3 * idx + 1], vertices[3 * idx + 2],
+                                 1.0f),
+                        Vector3f(normals[3 * idx], normals[3 * idx + 1], normals[3 * idx + 2]));
+                }
+            }
+            vertex_processor.input_vertices(Eigen::Vector4f(0, 0, 0, -1.0f),
+                                            Eigen::Vector3f::Zero());
+            for (auto& worker : workers) {
+                if (worker.joinable()) {
+                    worker.join();
+                }
+            }
+        }
+    }
+
+    time_point end_time         = steady_clock::now();
+    duration rendering_duration = end_time - begin_time;
+
+    this->logger->info("rendering (single thread) takes {:.6f} seconds",
+                       rendering_duration.count());
+
+    for (long unsigned int i = 0; i < Context::frame_buffer.depth_buffer.size(); i++) {
+        rendering_res.push_back(
+            static_cast<unsigned char>(Context::frame_buffer.color_buffer[i].x()));
+        rendering_res.push_back(
+            static_cast<unsigned char>(Context::frame_buffer.color_buffer[i].y()));
+        rendering_res.push_back(
+            static_cast<unsigned char>(Context::frame_buffer.color_buffer[i].z()));
+    }
+}
